@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import * as THREE from "three";
 import { Canvas, useFrame } from "@react-three/fiber";
@@ -582,60 +582,70 @@ function DnaHelix({ active }: { active: boolean }) {
   );
 }
 
-function DnaScene({ active }: { active: boolean }) {
+function DnaScene({ active, mobile }: { active: boolean; mobile: boolean }) {
   return (
     <Canvas
-      shadows={{ type: THREE.PCFShadowMap }}
-      dpr={[1, 2]}
-      gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
-      camera={{ position: [0, 0.12, 5.35], fov: 38 }}
+      shadows={mobile ? false : { type: THREE.PCFShadowMap }}
+      dpr={mobile ? 1 : [1, 2]}
+      gl={{
+        antialias: !mobile,
+        alpha: false,
+        depth: true,
+        stencil: false,
+        powerPreference: mobile ? "default" : "high-performance",
+      }}
+      camera={{ position: [0, mobile ? 0.18 : 0.12, mobile ? 5.7 : 5.35], fov: mobile ? 42 : 38 }}
     >
       <color attach="background" args={["#050707"]} />
       <fog attach="fog" args={["#050707", 4.8, 9.6]} />
 
       <ambientLight intensity={0.22} />
-      <directionalLight position={[-4.2, 4.8, 5]} intensity={2.65} color="#ffffff" castShadow />
+      <directionalLight position={[-4.2, 4.8, 5]} intensity={2.65} color="#ffffff" castShadow={!mobile} />
       <spotLight
         position={[3.4, 3.9, 3.8]}
         angle={0.42}
         penumbra={0.72}
         intensity={5.25}
         color="#d4af37"
-        castShadow
+        castShadow={!mobile}
       />
       <pointLight position={[-2.8, -1.9, 2.8]} intensity={1.95} color="#22c55e" />
       <pointLight position={[2.4, -2.25, 1.9]} intensity={1.35} color="#f8e7a1" />
       <pointLight position={[0, 2.4, -2.2]} intensity={0.95} color="#ffffff" />
 
-      <Environment preset="city" />
-      <Stars radius={58} depth={24} count={900} factor={3.4} saturation={0} fade speed={0.28} />
-      <DreiSparkles count={76} scale={[3.4, 4.6, 2]} size={2.3} speed={0.2} color="#f8e7a1" />
+      {!mobile && <Environment preset="city" />}
+      <Stars radius={58} depth={24} count={mobile ? 260 : 900} factor={mobile ? 2.4 : 3.4} saturation={0} fade speed={0.18} />
+      <DreiSparkles count={mobile ? 24 : 76} scale={[3.4, 4.6, 2]} size={mobile ? 1.6 : 2.3} speed={0.14} color="#f8e7a1" />
 
-      <Float speed={1.1} rotationIntensity={0.18} floatIntensity={0.55}>
+      <Float speed={mobile ? 0.55 : 1.1} rotationIntensity={mobile ? 0.08 : 0.18} floatIntensity={mobile ? 0.22 : 0.55}>
         <DnaHelix active={active} />
       </Float>
 
-      <ContactShadows
-        position={[0, -2.18, 0]}
-        opacity={0.48}
-        scale={5.1}
-        blur={3.1}
-        far={4.8}
-        color="#000000"
-      />
+      {!mobile && (
+        <>
+          <ContactShadows
+            position={[0, -2.18, 0]}
+            opacity={0.48}
+            scale={5.1}
+            blur={3.1}
+            far={4.8}
+            color="#000000"
+          />
 
-      <EffectComposer>
-        <Bloom intensity={0.72} luminanceThreshold={0.2} luminanceSmoothing={0.38} />
-        <DepthOfField focusDistance={0.015} focalLength={0.032} bokehScale={1.15} />
-        <Noise opacity={0.025} />
-        <Vignette eskil={false} offset={0.2} darkness={0.72} />
-      </EffectComposer>
+          <EffectComposer>
+            <Bloom intensity={0.72} luminanceThreshold={0.2} luminanceSmoothing={0.38} />
+            <DepthOfField focusDistance={0.015} focalLength={0.032} bokehScale={1.15} />
+            <Noise opacity={0.025} />
+            <Vignette eskil={false} offset={0.2} darkness={0.72} />
+          </EffectComposer>
+        </>
+      )}
 
       <OrbitControls
         enableZoom={false}
         enablePan={false}
         autoRotate
-        autoRotateSpeed={active ? 0.42 : 0.22}
+        autoRotateSpeed={mobile ? 0.12 : active ? 0.42 : 0.22}
       />
     </Canvas>
   );
@@ -716,6 +726,22 @@ function confidenceData(result: IntelligenceResult) {
   };
 }
 
+function useMobileHelixMode() {
+  const [isMobileHelix, setIsMobileHelix] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 760px), (pointer: coarse)");
+    const updateMode = () => setIsMobileHelix(query.matches);
+
+    updateMode();
+    query.addEventListener("change", updateMode);
+
+    return () => query.removeEventListener("change", updateMode);
+  }, []);
+
+  return isMobileHelix;
+}
+
 const lineChartOptions: ChartOptions<"line"> = {
   responsive: true,
   maintainAspectRatio: false,
@@ -786,6 +812,8 @@ export default function Home() {
   const [result, setResult] = useState<IntelligenceResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStatus, setAnalysisStatus] = useState<string | null>(null);
+  const mobileHelix = useMobileHelixMode();
+  const helixModeReady = mobileHelix !== null;
 
   const preview = useMemo(() => buildResult(draftTicker), [draftTicker]);
   const generated = result ?? defaultResult;
@@ -929,7 +957,9 @@ export default function Home() {
             </div>
 
             <div className="dna-viewport h-[420px] overflow-hidden rounded-3xl border border-white/10 bg-black/35">
-              <DnaScene active={isAnalyzing || Boolean(result)} />
+              {helixModeReady && (
+                <DnaScene active={isAnalyzing || Boolean(result)} mobile={mobileHelix} />
+              )}
             </div>
           </motion.section>
         </div>
