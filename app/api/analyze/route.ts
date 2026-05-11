@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
+export const maxDuration = 30;
+
 type JsonRecord = Record<string, unknown>;
+const OPENAI_TIMEOUT_MS = 22000;
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,18 +63,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const prompt = `
-You are an institutional equity research analyst.
+    const prompt = `Analyze ticker ${cleanedTicker} as an institutional equity research analyst.
 
-Analyze ticker: ${cleanedTicker}
+Return ONLY compact valid JSON. No markdown. Keep every string to one concise sentence.
 
-Return ONLY valid JSON. No markdown. No code fences. No commentary outside JSON.
-
-Use this exact JSON shape:
+Exact JSON shape:
 {
   "company": "Company name",
   "sector": "Sector / industry",
-  "about": "A concise company overview explaining what the company does, how it makes money, and why institutions may care.",
+  "about": "What the company does, how it makes money, and why institutions may care.",
   "thesis": "Institutional investment thesis.",
   "bull": "Bull case.",
   "bear": "Bear case.",
@@ -133,8 +133,12 @@ Rules:
 - Focus on business model, leadership, risks, catalysts, competitors, confirmation signals, and invalidation points.
 `;
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
@@ -142,6 +146,7 @@ Rules:
       body: JSON.stringify({
         model: process.env.OPENAI_MODEL || "gpt-4o-mini",
         temperature: 0.25,
+        max_tokens: 1400,
         response_format: { type: "json_object" },
         messages: [
           {
@@ -155,7 +160,7 @@ Rules:
           },
         ],
       }),
-    });
+    }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
       const errorText = await response.text();
