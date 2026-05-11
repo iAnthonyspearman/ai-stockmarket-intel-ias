@@ -73,7 +73,7 @@ type IntelligenceResult = {
   valuationScore: number;
   momentumScore: number;
   confidence: number;
-  competitors: { name: string; growth: number; margin: number; valuation: number }[];
+  competitors: LiveCompetitor[];
   risk: { label: string; value: number }[];
   news: { headline: string; impact: string; signal: string }[];
   examples: { title: string; scenario: string; benefit: string; signal: string }[];
@@ -81,6 +81,8 @@ type IntelligenceResult = {
 };
 
 type MarketQuote = {
+  symbol: string;
+  name: string;
   price: number;
   currency: string;
   change: number | null;
@@ -89,12 +91,28 @@ type MarketQuote = {
   asOf: string | null;
 };
 
+type LiveCompetitor = {
+  peer: string;
+  symbol: string;
+  name: string;
+  price: number | null;
+  currency: string;
+  change: number | null;
+  changePercent: number | null;
+  source: string;
+  asOf: string | null;
+  pricePosition: number;
+  momentum: number;
+  relevance: number;
+};
+
 type IntelligenceApiPayload = Partial<
   Pick<
     IntelligenceResult,
     | "company"
     | "sector"
     | "marketQuote"
+    | "competitors"
     | "about"
     | "thesis"
     | "bull"
@@ -156,6 +174,8 @@ function isStringList(value: unknown): value is string[] {
 function isMarketQuote(value: unknown): value is MarketQuote {
   return (
     isRecord(value) &&
+    typeof value.symbol === "string" &&
+    typeof value.name === "string" &&
     typeof value.price === "number" &&
     Number.isFinite(value.price) &&
     typeof value.currency === "string" &&
@@ -164,6 +184,28 @@ function isMarketQuote(value: unknown): value is MarketQuote {
     typeof value.source === "string" &&
     (typeof value.asOf === "string" || value.asOf === null)
   );
+}
+
+function isLiveCompetitor(value: unknown): value is LiveCompetitor {
+  return (
+    isRecord(value) &&
+    typeof value.peer === "string" &&
+    typeof value.symbol === "string" &&
+    typeof value.name === "string" &&
+    (typeof value.price === "number" || value.price === null) &&
+    typeof value.currency === "string" &&
+    (typeof value.change === "number" || value.change === null) &&
+    (typeof value.changePercent === "number" || value.changePercent === null) &&
+    typeof value.source === "string" &&
+    (typeof value.asOf === "string" || value.asOf === null) &&
+    typeof value.pricePosition === "number" &&
+    typeof value.momentum === "number" &&
+    typeof value.relevance === "number"
+  );
+}
+
+function isLiveCompetitorList(value: unknown): value is LiveCompetitor[] {
+  return Array.isArray(value) && value.every(isLiveCompetitor);
 }
 
 function readStringField(record: Record<string, unknown>, key: string) {
@@ -178,6 +220,7 @@ function parseIntelligencePayload(value: unknown): IntelligenceApiPayload {
     company: readStringField(value, "company"),
     sector: readStringField(value, "sector"),
     marketQuote: isMarketQuote(value.marketQuote) ? value.marketQuote : undefined,
+    competitors: isLiveCompetitorList(value.competitors) ? value.competitors : undefined,
     about: readStringField(value, "about"),
     thesis: readStringField(value, "thesis"),
     bull: readStringField(value, "bull"),
@@ -222,16 +265,55 @@ const defaultResult: IntelligenceResult = {
   valuationScore: 56,
   momentumScore: 88,
   confidence: 84,
-  competitors: [
-    { name: "AMD", growth: 74, margin: 62, valuation: 68 },
-    { name: "AVGO", growth: 69, margin: 81, valuation: 64 },
-    { name: "INTC", growth: 38, margin: 41, valuation: 52 },
-  ],
   risk: [
     { label: "Valuation", value: 78 },
     { label: "Competition", value: 61 },
     { label: "Macro", value: 48 },
     { label: "Leadership", value: 29 },
+  ],
+  competitors: [
+    {
+      peer: "Peer A",
+      symbol: "NVDA",
+      name: "NVIDIA Corporation",
+      price: null,
+      currency: "USD",
+      change: null,
+      changePercent: null,
+      source: "Live quote pending",
+      asOf: null,
+      pricePosition: 72,
+      momentum: 66,
+      relevance: 100,
+    },
+    {
+      peer: "Peer B",
+      symbol: "AMD",
+      name: "Advanced Micro Devices, Inc.",
+      price: null,
+      currency: "USD",
+      change: null,
+      changePercent: null,
+      source: "Live quote pending",
+      asOf: null,
+      pricePosition: 56,
+      momentum: 52,
+      relevance: 86,
+    },
+    {
+      peer: "Peer C",
+      symbol: "AVGO",
+      name: "Broadcom Inc.",
+      price: null,
+      currency: "USD",
+      change: null,
+      changePercent: null,
+      source: "Live quote pending",
+      asOf: null,
+      pricePosition: 61,
+      momentum: 58,
+      relevance: 78,
+    },
   ],
   news: [
     {
@@ -376,9 +458,48 @@ function buildResult(tickerInput: string): IntelligenceResult {
       },
     ],
     competitors: [
-      { name: "Peer A", growth: 50 + (seed % 40), margin: 46 + (seed % 35), valuation: 44 + (seed % 36) },
-      { name: "Peer B", growth: 42 + ((seed + 13) % 42), margin: 50 + ((seed + 9) % 35), valuation: 48 + ((seed + 5) % 34) },
-      { name: "Peer C", growth: 35 + ((seed + 21) % 45), margin: 38 + ((seed + 19) % 42), valuation: 40 + ((seed + 3) % 40) },
+      {
+        peer: "Peer A",
+        symbol: ticker,
+        name: preset.company ?? `${ticker} searched ticker`,
+        price: null,
+        currency: "USD",
+        change: null,
+        changePercent: null,
+        source: "Live quote pending",
+        asOf: null,
+        pricePosition: 50 + (seed % 40),
+        momentum: 46 + (seed % 35),
+        relevance: 100,
+      },
+      {
+        peer: "Peer B",
+        symbol: "LIVE",
+        name: "Live competitor appears after analysis",
+        price: null,
+        currency: "USD",
+        change: null,
+        changePercent: null,
+        source: "Live quote pending",
+        asOf: null,
+        pricePosition: 42 + ((seed + 13) % 42),
+        momentum: 50 + ((seed + 9) % 35),
+        relevance: 86,
+      },
+      {
+        peer: "Peer C",
+        symbol: "LIVE",
+        name: "Live competitor appears after analysis",
+        price: null,
+        currency: "USD",
+        change: null,
+        changePercent: null,
+        source: "Live quote pending",
+        asOf: null,
+        pricePosition: 35 + ((seed + 21) % 45),
+        momentum: 38 + ((seed + 19) % 42),
+        relevance: 78,
+      },
     ],
     risk: [
       { label: "Valuation", value: riskScore },
@@ -413,12 +534,16 @@ function buildResult(tickerInput: string): IntelligenceResult {
   };
 }
 
-function formatMarketPrice(quote: MarketQuote) {
+function formatCurrencyValue(price: number, currency: string) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: quote.currency || "USD",
-    maximumFractionDigits: quote.price >= 100 ? 2 : 4,
-  }).format(quote.price);
+    currency: currency || "USD",
+    maximumFractionDigits: price >= 100 ? 2 : 4,
+  }).format(price);
+}
+
+function formatMarketPrice(quote: MarketQuote) {
+  return formatCurrencyValue(quote.price, quote.currency);
 }
 
 function formatQuoteMove(value: number) {
@@ -747,23 +872,23 @@ function riskData(result: IntelligenceResult) {
 
 function competitorData(result: IntelligenceResult) {
   return {
-    labels: result.competitors.map((item) => item.name),
+    labels: result.competitors.map((item) => `${item.peer}: ${item.symbol}`),
     datasets: [
       {
-        label: "Growth",
-        data: result.competitors.map((item) => item.growth),
+        label: "Price Position",
+        data: result.competitors.map((item) => item.pricePosition),
         backgroundColor: "rgba(34,197,94,.72)",
         borderRadius: 10,
       },
       {
-        label: "Margin",
-        data: result.competitors.map((item) => item.margin),
+        label: "Day Momentum",
+        data: result.competitors.map((item) => item.momentum),
         backgroundColor: "rgba(212,175,55,.78)",
         borderRadius: 10,
       },
       {
-        label: "Valuation",
-        data: result.competitors.map((item) => item.valuation),
+        label: "Peer Relevance",
+        data: result.competitors.map((item) => item.relevance),
         backgroundColor: "rgba(148,163,184,.65)",
         borderRadius: 10,
       },
@@ -914,7 +1039,7 @@ export default function Home() {
         momentumScore: fallback.momentumScore,
         confidence: fallback.confidence,
         marketQuote: data.marketQuote ?? fallback.marketQuote,
-        competitors: fallback.competitors,
+        competitors: data.competitors ?? fallback.competitors,
         risk: fallback.risk,
         news: data.news ?? fallback.news,
         worldImpact: data.worldImpact ?? fallback.worldImpact,
@@ -1075,7 +1200,7 @@ export default function Home() {
             </div>
 
             <p className="mt-5 text-xs leading-6 text-white/38">
-              Research simulation only. Not financial advice. Future version can connect live market APIs, filings, news, ownership data, and RAG research.
+              Research support only. Live quote snapshots load when available; not financial advice.
             </p>
           </div>
 
@@ -1211,6 +1336,38 @@ export default function Home() {
             </div>
             <div className="h-[330px]">
               <Bar data={competitorData(generated)} options={barChartOptions} />
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              {generated.competitors.map((peer) => {
+                const isPositive = (peer.change ?? 0) >= 0;
+
+                return (
+                  <div key={`${peer.peer}-${peer.symbol}`} className="rounded-3xl border border-white/10 bg-black/25 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.16em] text-white/35">{peer.peer}</p>
+                        <p className="mt-1 text-xl font-semibold text-white">{peer.symbol}</p>
+                      </div>
+                      <span
+                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                          isPositive
+                            ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100"
+                            : "border-red-300/35 bg-red-300/10 text-red-100"
+                        }`}
+                      >
+                        {peer.changePercent === null ? "Live" : formatQuotePercent(peer.changePercent)}
+                      </span>
+                    </div>
+                    <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-white/52">{peer.name}</p>
+                    <p className="mt-4 text-2xl font-semibold text-gold-light">
+                      {peer.price === null ? "Run analysis" : formatCurrencyValue(peer.price, peer.currency)}
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-white/38">
+                      {peer.asOf ? formatQuoteTime(peer.asOf) : peer.source}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
