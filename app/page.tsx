@@ -58,6 +58,7 @@ type IntelligenceResult = {
   ticker: string;
   company: string;
   sector: string;
+  marketQuote: MarketQuote | null;
   about: string;
   thesis: string;
   bull: string;
@@ -79,11 +80,21 @@ type IntelligenceResult = {
   monitor: string[];
 };
 
+type MarketQuote = {
+  price: number;
+  currency: string;
+  change: number | null;
+  changePercent: number | null;
+  source: string;
+  asOf: string | null;
+};
+
 type IntelligenceApiPayload = Partial<
   Pick<
     IntelligenceResult,
     | "company"
     | "sector"
+    | "marketQuote"
     | "about"
     | "thesis"
     | "bull"
@@ -142,6 +153,19 @@ function isStringList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
+function isMarketQuote(value: unknown): value is MarketQuote {
+  return (
+    isRecord(value) &&
+    typeof value.price === "number" &&
+    Number.isFinite(value.price) &&
+    typeof value.currency === "string" &&
+    (typeof value.change === "number" || value.change === null) &&
+    (typeof value.changePercent === "number" || value.changePercent === null) &&
+    typeof value.source === "string" &&
+    (typeof value.asOf === "string" || value.asOf === null)
+  );
+}
+
 function readStringField(record: Record<string, unknown>, key: string) {
   const value = record[key];
   return typeof value === "string" ? value : undefined;
@@ -153,6 +177,7 @@ function parseIntelligencePayload(value: unknown): IntelligenceApiPayload {
   return {
     company: readStringField(value, "company"),
     sector: readStringField(value, "sector"),
+    marketQuote: isMarketQuote(value.marketQuote) ? value.marketQuote : undefined,
     about: readStringField(value, "about"),
     thesis: readStringField(value, "thesis"),
     bull: readStringField(value, "bull"),
@@ -173,6 +198,7 @@ const defaultResult: IntelligenceResult = {
   ticker: "NVDA",
   company: "NVIDIA Corporation",
   sector: "Semiconductors / AI Infrastructure",
+  marketQuote: null,
   about:
     "NVIDIA designs GPUs, AI accelerators, networking systems, and software platforms used in gaming, data centers, AI model training, inference, visualization, and accelerated computing.",
   thesis:
@@ -385,6 +411,38 @@ function buildResult(tickerInput: string): IntelligenceResult {
       "Leadership execution signals",
     ],
   };
+}
+
+function formatMarketPrice(quote: MarketQuote) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: quote.currency || "USD",
+    maximumFractionDigits: quote.price >= 100 ? 2 : 4,
+  }).format(quote.price);
+}
+
+function formatQuoteMove(value: number) {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}`;
+}
+
+function formatQuotePercent(value: number) {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}%`;
+}
+
+function formatQuoteTime(value: string | null) {
+  if (!value) return "Latest available quote snapshot";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Latest available quote snapshot";
+
+  return `As of ${date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
 }
 
 function HelixRail({
@@ -855,6 +913,7 @@ export default function Home() {
         valuationScore: fallback.valuationScore,
         momentumScore: fallback.momentumScore,
         confidence: fallback.confidence,
+        marketQuote: data.marketQuote ?? fallback.marketQuote,
         competitors: fallback.competitors,
         risk: fallback.risk,
         news: data.news ?? fallback.news,
@@ -1041,6 +1100,47 @@ export default function Home() {
               </div>
             ) : (
               <div className="space-y-4">
+                <div className="rounded-3xl border border-emerald-300/20 bg-emerald-300/10 p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm text-emerald-100">Ticker Price Snapshot</p>
+                      {generated.marketQuote ? (
+                        <div className="mt-2 flex flex-wrap items-baseline gap-3">
+                          <p className="text-4xl font-semibold text-white">
+                            {formatMarketPrice(generated.marketQuote)}
+                          </p>
+                          {generated.marketQuote.change !== null && generated.marketQuote.changePercent !== null ? (
+                            <p
+                              className={`rounded-full border px-3 py-1 text-sm font-semibold ${
+                                generated.marketQuote.change >= 0
+                                  ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100"
+                                  : "border-red-300/35 bg-red-300/10 text-red-100"
+                              }`}
+                            >
+                              {formatQuoteMove(generated.marketQuote.change)} (
+                              {formatQuotePercent(generated.marketQuote.changePercent)})
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-2xl font-semibold text-white/70">Price unavailable</p>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-right">
+                      <p className="text-xs uppercase tracking-[0.18em] text-white/35">Source</p>
+                      <p className="mt-1 text-sm text-white/68">
+                        {generated.marketQuote?.source ?? "Market quote service"}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-white/45">
+                    {generated.marketQuote
+                      ? formatQuoteTime(generated.marketQuote.asOf)
+                      : `No quote snapshot returned for ${generated.ticker}.`}
+                  </p>
+                </div>
+
                 <div className="rounded-3xl border border-white/10 bg-black/25 p-5">
                   <p className="mb-2 text-sm text-gold-light">Company Overview</p>
                   <p className="text-sm leading-7 text-white/65">{generated.about}</p>

@@ -4,6 +4,7 @@ export const maxDuration = 30;
 
 type JsonRecord = Record<string, unknown>;
 const OPENAI_TIMEOUT_MS = 22000;
+const QUOTE_TIMEOUT_MS = 4500;
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -12,6 +13,11 @@ function isRecord(value: unknown): value is JsonRecord {
 function getStringField(record: JsonRecord, key: string, fallback: string) {
   const value = record[key];
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function getNumberField(record: JsonRecord, key: string) {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function getRecordList(value: unknown, limit: number) {
@@ -44,6 +50,60 @@ function extractJson(text: string): unknown {
   }
 }
 
+async function fetchMarketQuote(ticker: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), QUOTE_TIMEOUT_MS);
+  const yahooSymbol = encodeURIComponent(ticker.replace(".", "-"));
+
+  try {
+    const response = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?range=1d&interval=1m`,
+      {
+        cache: "no-store",
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Mozilla/5.0",
+        },
+      }
+    );
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const chart = isRecord(data) ? data.chart : null;
+    const results = isRecord(chart) && Array.isArray(chart.result) ? chart.result : [];
+    const firstResult = results.find(isRecord);
+    const meta = firstResult && isRecord(firstResult.meta) ? firstResult.meta : null;
+
+    if (!meta) return null;
+
+    const price = getNumberField(meta, "regularMarketPrice");
+    if (price === null) return null;
+
+    const previousClose =
+      getNumberField(meta, "chartPreviousClose") ?? getNumberField(meta, "previousClose");
+    const change = previousClose === null ? null : price - previousClose;
+    const changePercent =
+      previousClose === null || previousClose === 0 ? null : (change! / previousClose) * 100;
+    const marketTime = getNumberField(meta, "regularMarketTime");
+    const currency = getStringField(meta, "currency", "USD");
+
+    return {
+      price,
+      currency,
+      change,
+      changePercent,
+      asOf: marketTime === null ? null : new Date(marketTime * 1000).toISOString(),
+      source: "Yahoo Finance",
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { ticker } = await request.json();
@@ -53,6 +113,7 @@ export async function POST(request: Request) {
     }
 
     const cleanedTicker = ticker.trim().toUpperCase();
+    const quotePromise = fetchMarketQuote(cleanedTicker);
 
     const apiKey = process.env.OPENAI_API_KEY;
 
@@ -180,9 +241,12 @@ Rules:
     const parsedValue = extractJson(content);
     const parsed = isRecord(parsedValue) ? parsedValue : {};
 
+    const marketQuote = await quotePromise;
+
     return NextResponse.json({
       company: getStringField(parsed, "company", `${cleanedTicker} Intelligence Profile`),
       sector: getStringField(parsed, "sector", "Market Intelligence"),
+      marketQuote,
       about: getStringField(parsed, "about", "Company overview unavailable."),
       thesis: getStringField(parsed, "thesis", "Thesis unavailable."),
       bull: getStringField(parsed, "bull", "Bull case unavailable."),
