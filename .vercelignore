@@ -1,0 +1,10 @@
+.env*
+.next
+node_modules
+starter-pack
+*.py
+AGENTS.md
+CLAUDE.md
+PROJECT_CONTEXT.md
+ROADMAP.md
+UI_GUIDELINES.md
