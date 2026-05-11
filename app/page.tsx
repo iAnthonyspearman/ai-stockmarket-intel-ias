@@ -87,6 +87,9 @@ type MarketQuote = {
   currency: string;
   change: number | null;
   changePercent: number | null;
+  dayHigh: number | null;
+  dayLow: number | null;
+  volume: number | null;
   source: string;
   asOf: string | null;
 };
@@ -99,6 +102,9 @@ type LiveCompetitor = {
   currency: string;
   change: number | null;
   changePercent: number | null;
+  dayHigh: number | null;
+  dayLow: number | null;
+  volume: number | null;
   source: string;
   asOf: string | null;
   pricePosition: number;
@@ -181,6 +187,9 @@ function isMarketQuote(value: unknown): value is MarketQuote {
     typeof value.currency === "string" &&
     (typeof value.change === "number" || value.change === null) &&
     (typeof value.changePercent === "number" || value.changePercent === null) &&
+    (typeof value.dayHigh === "number" || value.dayHigh === null) &&
+    (typeof value.dayLow === "number" || value.dayLow === null) &&
+    (typeof value.volume === "number" || value.volume === null) &&
     typeof value.source === "string" &&
     (typeof value.asOf === "string" || value.asOf === null)
   );
@@ -196,6 +205,9 @@ function isLiveCompetitor(value: unknown): value is LiveCompetitor {
     typeof value.currency === "string" &&
     (typeof value.change === "number" || value.change === null) &&
     (typeof value.changePercent === "number" || value.changePercent === null) &&
+    (typeof value.dayHigh === "number" || value.dayHigh === null) &&
+    (typeof value.dayLow === "number" || value.dayLow === null) &&
+    (typeof value.volume === "number" || value.volume === null) &&
     typeof value.source === "string" &&
     (typeof value.asOf === "string" || value.asOf === null) &&
     typeof value.pricePosition === "number" &&
@@ -280,6 +292,9 @@ const defaultResult: IntelligenceResult = {
       currency: "USD",
       change: null,
       changePercent: null,
+      dayHigh: null,
+      dayLow: null,
+      volume: null,
       source: "Live quote pending",
       asOf: null,
       pricePosition: 72,
@@ -294,6 +309,9 @@ const defaultResult: IntelligenceResult = {
       currency: "USD",
       change: null,
       changePercent: null,
+      dayHigh: null,
+      dayLow: null,
+      volume: null,
       source: "Live quote pending",
       asOf: null,
       pricePosition: 56,
@@ -308,6 +326,9 @@ const defaultResult: IntelligenceResult = {
       currency: "USD",
       change: null,
       changePercent: null,
+      dayHigh: null,
+      dayLow: null,
+      volume: null,
       source: "Live quote pending",
       asOf: null,
       pricePosition: 61,
@@ -466,6 +487,9 @@ function buildResult(tickerInput: string): IntelligenceResult {
         currency: "USD",
         change: null,
         changePercent: null,
+        dayHigh: null,
+        dayLow: null,
+        volume: null,
         source: "Live quote pending",
         asOf: null,
         pricePosition: 50 + (seed % 40),
@@ -480,6 +504,9 @@ function buildResult(tickerInput: string): IntelligenceResult {
         currency: "USD",
         change: null,
         changePercent: null,
+        dayHigh: null,
+        dayLow: null,
+        volume: null,
         source: "Live quote pending",
         asOf: null,
         pricePosition: 42 + ((seed + 13) % 42),
@@ -494,6 +521,9 @@ function buildResult(tickerInput: string): IntelligenceResult {
         currency: "USD",
         change: null,
         changePercent: null,
+        dayHigh: null,
+        dayLow: null,
+        volume: null,
         source: "Live quote pending",
         asOf: null,
         pricePosition: 35 + ((seed + 21) % 45),
@@ -554,6 +584,19 @@ function formatQuoteMove(value: number) {
 function formatQuotePercent(value: number) {
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}%`;
+}
+
+function formatVolume(value: number | null) {
+  if (value === null) return "Volume unavailable";
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B volume`;
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M volume`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K volume`;
+  return `${value.toLocaleString("en-US")} volume`;
+}
+
+function formatDayRange(peer: LiveCompetitor) {
+  if (peer.dayLow === null || peer.dayHigh === null) return "Range unavailable";
+  return `${formatCurrencyValue(peer.dayLow, peer.currency)} - ${formatCurrencyValue(peer.dayHigh, peer.currency)}`;
 }
 
 function formatQuoteTime(value: string | null) {
@@ -872,25 +915,28 @@ function riskData(result: IntelligenceResult) {
 
 function competitorData(result: IntelligenceResult) {
   return {
-    labels: result.competitors.map((item) => `${item.peer}: ${item.symbol}`),
+    labels: result.competitors.map((item) => item.symbol),
     datasets: [
       {
-        label: "Price Position",
-        data: result.competitors.map((item) => item.pricePosition),
+        label: "Current Price",
+        data: result.competitors.map((item) => item.price ?? 0),
         backgroundColor: "rgba(34,197,94,.72)",
         borderRadius: 10,
+        yAxisID: "price",
       },
       {
-        label: "Day Momentum",
-        data: result.competitors.map((item) => item.momentum),
+        label: "Day Change %",
+        data: result.competitors.map((item) => item.changePercent ?? 0),
         backgroundColor: "rgba(212,175,55,.78)",
         borderRadius: 10,
+        yAxisID: "percent",
       },
       {
-        label: "Peer Relevance",
-        data: result.competitors.map((item) => item.relevance),
+        label: "Volume (M)",
+        data: result.competitors.map((item) => (item.volume ?? 0) / 1_000_000),
         backgroundColor: "rgba(148,163,184,.65)",
         borderRadius: 10,
+        yAxisID: "volume",
       },
     ],
   };
@@ -977,6 +1023,43 @@ const barChartOptions: ChartOptions<"bar"> = {
       max: 100,
       ticks: { color: "rgba(255,255,255,.55)" },
       grid: { color: "rgba(255,255,255,.08)" },
+    },
+  },
+};
+
+const competitorChartOptions: ChartOptions<"bar"> = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { labels: { color: "rgba(255,255,255,.72)" } },
+    tooltip: {
+      backgroundColor: "rgba(5,7,7,.95)",
+      borderColor: "rgba(212,175,55,.45)",
+      borderWidth: 1,
+      titleColor: "#f8e7a1",
+      bodyColor: "rgba(255,255,255,.85)",
+      padding: 12,
+    },
+  },
+  scales: {
+    x: {
+      ticks: { color: "rgba(255,255,255,.65)" },
+      grid: { color: "rgba(255,255,255,.06)" },
+    },
+    price: {
+      position: "left",
+      ticks: { color: "rgba(34,197,94,.78)" },
+      grid: { color: "rgba(255,255,255,.08)" },
+    },
+    percent: {
+      position: "right",
+      ticks: { color: "rgba(212,175,55,.8)" },
+      grid: { drawOnChartArea: false },
+    },
+    volume: {
+      position: "right",
+      ticks: { color: "rgba(148,163,184,.75)" },
+      grid: { drawOnChartArea: false },
     },
   },
 };
@@ -1334,8 +1417,8 @@ export default function Home() {
               <GitCompare className="h-6 w-6 text-gold-light" />
               <h3 className="text-2xl font-semibold">Competitor & Sector War Room</h3>
             </div>
-            <div className="h-[330px]">
-              <Bar data={competitorData(generated)} options={barChartOptions} />
+            <div className="h-[360px]">
+              <Bar data={competitorData(generated)} options={competitorChartOptions} />
             </div>
             <div className="mt-5 grid gap-3 md:grid-cols-3">
               {generated.competitors.map((peer) => {
@@ -1345,8 +1428,7 @@ export default function Home() {
                   <div key={`${peer.peer}-${peer.symbol}`} className="rounded-3xl border border-white/10 bg-black/25 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-xs uppercase tracking-[0.16em] text-white/35">{peer.peer}</p>
-                        <p className="mt-1 text-xl font-semibold text-white">{peer.symbol}</p>
+                        <p className="text-2xl font-semibold text-white">{peer.symbol}</p>
                       </div>
                       <span
                         className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
@@ -1362,6 +1444,10 @@ export default function Home() {
                     <p className="mt-4 text-2xl font-semibold text-gold-light">
                       {peer.price === null ? "Run analysis" : formatCurrencyValue(peer.price, peer.currency)}
                     </p>
+                    <div className="mt-3 grid gap-1 text-xs leading-5 text-white/42">
+                      <p>{formatVolume(peer.volume)}</p>
+                      <p>{formatDayRange(peer)}</p>
+                    </div>
                     <p className="mt-2 text-xs leading-5 text-white/38">
                       {peer.asOf ? formatQuoteTime(peer.asOf) : peer.source}
                     </p>
