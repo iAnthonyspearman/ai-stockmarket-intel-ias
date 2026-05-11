@@ -585,7 +585,7 @@ function DnaHelix({ active }: { active: boolean }) {
 function DnaScene({ active }: { active: boolean }) {
   return (
     <Canvas
-      shadows
+      shadows={{ type: THREE.PCFShadowMap }}
       dpr={[1, 2]}
       gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
       camera={{ position: [0, 0.12, 5.35], fov: 38 }}
